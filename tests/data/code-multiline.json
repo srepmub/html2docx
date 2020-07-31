@@ -1,0 +1,11 @@
+[
+    {
+        "text": "value = get_value(arg)\nif do_something(value):\n    return",
+        "runs": [
+            {
+                "text": "value = get_value(arg)\nif do_something(value):\n    return",
+                "name": "Mono"
+            }
+        ]
+    }
+]
