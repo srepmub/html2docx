@@ -80,6 +80,8 @@ class HTML2Docx(HTMLParser):
 
         # Formatting options
         self.pre = False
+        self.style = False
+        self.code = False
         self.table_cell: Optional[Any] = None
         self.tables: List[Tuple[Any, int, int]] = []
         self.alignment: Optional[int] = None
@@ -214,7 +216,7 @@ class HTML2Docx(HTMLParser):
 
             self.r.add_text(self.anchor + " " + text)
 
-    def add_code(self, data : str) -> None:
+    def add_code(self, data: str) -> None:
         lines = data.splitlines()
         for linenr, line in enumerate(lines):
             self.add_text(line.rstrip())
@@ -269,6 +271,10 @@ class HTML2Docx(HTMLParser):
             self.init_p(attrs)
         elif tag == "pre":
             self.pre = True
+        elif tag == "style":
+            self.style = True
+        elif tag == "code":
+            self.code = True
         elif tag == "span":
             span_attrs = html_attrs_to_font_style(attrs)
             self.init_run(span_attrs)
@@ -288,6 +294,8 @@ class HTML2Docx(HTMLParser):
             self.init_tdth()
 
     def handle_data(self, data: str) -> None:
+        if self.style:
+            return
         if not self.pre:
             data = re.sub(WHITESPACE_RE, " ", data)
         if self.collapse_space:
@@ -295,7 +303,7 @@ class HTML2Docx(HTMLParser):
         if data:
             self.collapse_space = data.endswith(" ")
 
-            if self.tag == "code":
+            if self.code:
                 self.add_code(data)
             else:
                 self.add_text(data)
@@ -308,10 +316,14 @@ class HTML2Docx(HTMLParser):
                 self.anchor = ""
         elif tag in ["h1", "h2", "h3", "h4", "h5", "h6", "li", "ol", "p", "pre", "ul"]:
             self.finish_p()
-            if tag in ["ol", "ul"]:
-                del self.list_style[-1]
-            elif tag == "pre":
-                self.pre = False
+        elif tag in ["ol", "ul"]:
+            del self.list_style[-1]
+        elif tag == "pre":
+            self.pre = False
+        elif tag == "style":
+            self.style = False
+        elif tag == "code":
+            self.code = False
         elif tag == "table":
             self.finish_table()
         elif tag in ["td", "th"]:
