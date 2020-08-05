@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.shared import OxmlElement, qn
 from docx.shared import Pt
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
@@ -70,6 +71,7 @@ class HTML2Docx(HTMLParser):
         self.doc.core_properties.title = title
         self.list_style: List[str] = []
         self.href = ""
+        self.anchor = ""
         self._reset()
 
     def _reset(self) -> None:
@@ -158,7 +160,59 @@ class HTML2Docx(HTMLParser):
             for attrs in self.attrs:
                 for font_attr, value in attrs:
                     setattr(self.r.font, font_attr, value)
-        self.r.add_text(data)
+        if self.href:
+            self.add_hyperlink(self.href, data)
+        elif self.anchor:
+            self.add_bookmark(self.anchor, data)
+        else:
+            self.r.add_text(data)
+
+    def add_hyperlink(self, href: str, text: str) -> None:
+        if not href.startswith("#"):  # TODO external links
+            if text.endswith(" "):
+                text += href + " "
+            else:
+                text += " " + href
+            if self.r:
+                self.r.add_text(text)
+            return
+
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("w:anchor"), href[1:])
+
+        new_run = OxmlElement("w:r")
+
+        rPr = OxmlElement("w:rPr")
+
+        rColor = OxmlElement("w:color")
+        rColor.set(qn("w:val"), "000080")
+        rPr.append(rColor)
+
+        rU = OxmlElement("w:u")
+        rU.set(qn("w:val"), "single")
+        rPr.append(rU)
+
+        new_run.append(rPr)
+        new_run.text = text
+
+        hyperlink.append(new_run)
+
+        if self.p:
+            self.p._p.append(hyperlink)
+        self.r = None
+
+    def add_bookmark(self, anchor: str, text: str) -> None:
+        if self.r:
+            tag = self.r._r
+            start = OxmlElement("w:bookmarkStart")
+            start.set(qn("w:id"), "0")
+            start.set(qn("w:name"), anchor)
+            tag.addprevious(start)
+            end = OxmlElement("w:bookmarkEnd")
+            end.set(qn("w:id"), "0")
+            tag.addnext(end)
+
+            self.r.add_text(self.anchor + " " + text)
 
     def add_list_style(self, name: str) -> None:
         self.finish_p()
@@ -185,6 +239,7 @@ class HTML2Docx(HTMLParser):
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         if tag == "a":
             self.href = get_attr(attrs, "href")
+            self.anchor = get_attr(attrs, "id")
             self.init_run([])
         elif tag in ["b", "strong"]:
             self.init_run([("bold", True)])
@@ -230,18 +285,15 @@ class HTML2Docx(HTMLParser):
         if self.collapse_space:
             data = data.lstrip()
         if data:
-            if self.href:
-                if data.endswith(" "):
-                    data += self.href + " "
-                else:
-                    data += " " + self.href
-                self.href = ""
             self.collapse_space = data.endswith(" ")
             self.add_text(data)
 
     def handle_endtag(self, tag: str) -> None:
         if tag in ["a", "b", "code", "em", "i", "span", "strong", "sub", "sup", "u"]:
             self.finish_run()
+            if tag == "a":
+                self.href = ""
+                self.anchor = ""
         elif tag in ["h1", "h2", "h3", "h4", "h5", "h6", "li", "ol", "p", "pre", "ul"]:
             self.finish_p()
             if tag in ["ol", "ul"]:
