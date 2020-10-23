@@ -2,10 +2,13 @@ import re
 from html.parser import HTMLParser
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+import webcolors
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
 from docx.oxml.shared import OxmlElement, qn
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from tinycss2 import parse_declaration_list
@@ -129,7 +132,8 @@ class HTML2Docx(HTMLParser):
         self.tables[-1] = (table, row, col)
         table.add_row()
 
-    def init_tdth(self) -> None:
+    def init_tdth(self, attrs) -> None:
+        styles = [b for a, b in attrs if a == "style" and b]
         table, row, col = self.tables[-1]
         col += 1
         self.tables[-1] = (table, row, col)
@@ -137,6 +141,25 @@ class HTML2Docx(HTMLParser):
             table.add_column(0)
         self.table_cell = table.cell(row, col)
         self.p = self.table_cell.paragraphs[0]
+        if styles:
+            self.r = self.p.add_run()
+            style = styles[0]
+            for style_decl in style_to_css(style):
+                if style_decl["name"] == "background":
+                    rgb = webcolors.name_to_hex(style_decl["value"])[1:]
+                    shading = parse_xml(
+                        r'<w:shd {} w:fill="{}"/>'.format(nsdecls("w"), rgb)
+                    )
+                    self.table_cell._tc.get_or_add_tcPr().append(shading)
+                elif style_decl["name"] == "color":
+                    rgb = webcolors.name_to_rgb(style_decl["value"])
+                    self.r.font.color.rgb = RGBColor(*rgb)
+        else:
+            self.r = None
+
+    def finish_tdth(self):
+        self.table_cell = None
+        self.p = None
         self.r = None
 
     def init_run(self, attrs: List[Tuple[str, Any]]) -> None:
@@ -258,6 +281,7 @@ class HTML2Docx(HTMLParser):
                 self.r.add_break()
         elif tag == "code":
             self.init_run([("name", "Mono")])
+            self.code = True
         elif tag in ["em", "i"]:
             self.init_run([("italic", True)])
         elif tag in ["h1", "h2", "h3", "h4", "h5", "h6"]:
@@ -273,8 +297,6 @@ class HTML2Docx(HTMLParser):
             self.pre = True
         elif tag == "style":
             self.style = True
-        elif tag == "code":
-            self.code = True
         elif tag == "span":
             span_attrs = html_attrs_to_font_style(attrs)
             self.init_run(span_attrs)
@@ -291,7 +313,7 @@ class HTML2Docx(HTMLParser):
         elif tag == "tr":
             self.init_tr()
         elif tag in ["td", "th"]:
-            self.init_tdth()
+            self.init_tdth(attrs)
 
     def handle_data(self, data: str) -> None:
         if self.style:
@@ -314,19 +336,17 @@ class HTML2Docx(HTMLParser):
             if tag == "a":
                 self.href = ""
                 self.anchor = ""
+            elif tag == "code":
+                self.code = False
         elif tag in ["h1", "h2", "h3", "h4", "h5", "h6", "li", "ol", "p", "pre", "ul"]:
             self.finish_p()
-        elif tag in ["ol", "ul"]:
-            del self.list_style[-1]
-        elif tag == "pre":
-            self.pre = False
+            if tag in ["ol", "ul"]:
+                del self.list_style[-1]
+            elif tag == "pre":
+                self.pre = False
         elif tag == "style":
             self.style = False
-        elif tag == "code":
-            self.code = False
         elif tag == "table":
             self.finish_table()
         elif tag in ["td", "th"]:
-            self.table_cell = None
-            self.p = None
-            self.r = None
+            self.finish_tdth()
