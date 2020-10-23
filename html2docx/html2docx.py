@@ -263,10 +263,15 @@ class HTML2Docx(HTMLParser):
 
         image_buffer = load_image(src)
         size = image_size(image_buffer, width_px, height_px)
-        paragraph = self.doc.add_paragraph()
-        if self.alignment is not None:
-            paragraph.alignment = self.alignment
-        run = paragraph.add_run()
+        if self.table_cell:
+            run = self.p.add_run()
+            for key, value in size.items():
+                size[key] = value // 2
+        else:
+            paragraph = self.doc.add_paragraph()
+            if self.alignment is not None:
+                paragraph.alignment = self.alignment
+            run = paragraph.add_run()
         run.add_picture(image_buffer, **size)
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
