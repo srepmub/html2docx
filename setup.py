@@ -1,3 +1,5 @@
 from setuptools import setup
 
-setup()
+setup(
+    scripts=['bin/html2docx'],
+)
