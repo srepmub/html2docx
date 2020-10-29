@@ -3,6 +3,7 @@ import binascii
 import http
 import io
 import pathlib
+import os
 import time
 import urllib.error
 import urllib.request
@@ -42,6 +43,10 @@ def make_image(data: Optional[bytes]) -> io.BytesIO:
 def load_external_image(src: str) -> Optional[bytes]:
     data = None
     retry = 3
+
+    if os.path.isfile(src):
+        return open(src, 'rb').read()
+
     while retry and not data:
         try:
             with urllib.request.urlopen(src) as response:
