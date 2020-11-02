@@ -75,6 +75,7 @@ class HTML2Docx(HTMLParser):
         self.list_style: List[str] = []
         self.href = ""
         self.anchor = ""
+        self.pictures = []
         self._reset()
 
     def _reset(self) -> None:
@@ -265,14 +266,16 @@ class HTML2Docx(HTMLParser):
         size = image_size(image_buffer, width_px, height_px)
         if self.table_cell:
             run = self.p.add_run()
-            for key, value in size.items():
-                size[key] = value // 2
         else:
             paragraph = self.doc.add_paragraph()
             if self.alignment is not None:
                 paragraph.alignment = self.alignment
             run = paragraph.add_run()
-        run.add_picture(image_buffer, **size)
+        if self.tables:
+            table = self.tables[-1]
+        else:
+            table = None
+        self.pictures.append((table, run, image_buffer, size))
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         if tag == "a":
@@ -355,3 +358,13 @@ class HTML2Docx(HTMLParser):
             self.finish_table()
         elif tag in ["td", "th"]:
             self.finish_tdth()
+        elif tag == "html":
+             for table, run, image_buffer, size in self.pictures:
+                 if table is not None:
+                     table = table[0]
+                     if len(table.columns) > 0:
+                         if size['width'] > (0.9 * table.columns[0].width):
+                             shrink = size['width'] / (0.9 * table.columns[0].width)
+                             for key, value in size.items():
+                                 size[key] = value // shrink
+                 run.add_picture(image_buffer, **size)
